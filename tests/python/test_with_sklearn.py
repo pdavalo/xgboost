@@ -298,3 +298,147 @@ def test_split_value_histograms():
     assert gbdt.get_split_value_histogram("f28", bins=2).shape[0] == 2
     assert gbdt.get_split_value_histogram("f28", bins=5).shape[0] == 2
     assert gbdt.get_split_value_histogram("f28", bins=None).shape[0] == 2
+
+
+def test_sklearn_random_state():
+    tm._skip_if_no_sklearn()
+
+    clf = xgb.XGBClassifier(random_state=402)
+    assert clf.get_params()['seed'] == 402
+
+    clf = xgb.XGBClassifier(seed=401)
+    assert clf.get_params()['seed'] == 401
+
+
+def test_seed_deprecation():
+    tm._skip_if_no_sklearn()
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+        xgb.XGBClassifier(seed=1)
+        assert w[0].category == DeprecationWarning
+
+
+def test_sklearn_n_jobs():
+    tm._skip_if_no_sklearn()
+
+    clf = xgb.XGBClassifier(n_jobs=1)
+    assert clf.get_params()['nthread'] == 1
+
+    clf = xgb.XGBClassifier(nthread=2)
+    assert clf.get_params()['nthread'] == 2
+
+
+def test_nthread_deprecation():
+    tm._skip_if_no_sklearn()
+    warnings.simplefilter("always")
+    with warnings.catch_warnings(record=True) as w:
+        xgb.XGBClassifier(nthread=1)
+        assert w[0].category == DeprecationWarning
+
+
+def test_kwargs():
+    tm._skip_if_no_sklearn()
+
+    params = {'updater': 'grow_gpu', 'subsample': .5, 'n_jobs': -1}
+    clf = xgb.XGBClassifier(n_estimators=1000, **params)
+    assert clf.get_params()['updater'] == 'grow_gpu'
+    assert clf.get_params()['subsample'] == .5
+    assert clf.get_params()['n_estimators'] == 1000
+
+
+@raises(TypeError)
+def test_kwargs_error():
+    tm._skip_if_no_sklearn()
+
+    params = {'updater': 'grow_gpu', 'subsample': .5, 'n_jobs': -1}
+    clf = xgb.XGBClassifier(n_jobs=1000, **params)
+    assert isinstance(clf, xgb.XGBClassifier)
+
+
+def test_validation_weights_xgbmodel():
+    tm._skip_if_no_sklearn()
+    from sklearn.datasets import make_hastie_10_2
+
+    # prepare training and test data
+    X, y = make_hastie_10_2(n_samples=2000, random_state=42)
+    labels, y = np.unique(y, return_inverse=True)
+    X_train, X_test = X[:1600], X[1600:]
+    y_train, y_test = y[:1600], y[1600:]
+
+    # instantiate model
+    param_dist = {'objective': 'binary:logistic', 'n_estimators': 2,
+                  'random_state': 123}
+    clf = xgb.sklearn.XGBModel(**param_dist)
+
+    # train it using instance weights only in the training set
+    weights_train = np.random.choice([1, 2], len(X_train))
+    clf.fit(X_train, y_train,
+            sample_weight=weights_train,
+            eval_set=[(X_test, y_test)],
+            eval_metric='logloss',
+            verbose=False)
+
+    # evaluate logloss metric on test set *without* using weights
+    evals_result_without_weights = clf.evals_result()
+    logloss_without_weights = evals_result_without_weights["validation_0"]["logloss"]
+
+    # now use weights for the test set
+    np.random.seed(0)
+    weights_test = np.random.choice([1, 2], len(X_test))
+    clf.fit(X_train, y_train,
+            sample_weight=weights_train,
+            eval_set=[(X_test, y_test)],
+            sample_weight_eval_set=[weights_test],
+            eval_metric='logloss',
+            verbose=False)
+    evals_result_with_weights = clf.evals_result()
+    logloss_with_weights = evals_result_with_weights["validation_0"]["logloss"]
+
+    # check that the logloss in the test set is actually different when using weights
+    # than when not using them
+    assert all((logloss_with_weights[i] != logloss_without_weights[i] for i in [0, 1]))
+
+
+def test_validation_weights_xgbclassifier():
+    tm._skip_if_no_sklearn()
+    from sklearn.datasets import make_hastie_10_2
+
+    # prepare training and test data
+    X, y = make_hastie_10_2(n_samples=2000, random_state=42)
+    labels, y = np.unique(y, return_inverse=True)
+    X_train, X_test = X[:1600], X[1600:]
+    y_train, y_test = y[:1600], y[1600:]
+
+    # instantiate model
+    param_dist = {'objective': 'binary:logistic', 'n_estimators': 2,
+                  'random_state': 123}
+    clf = xgb.sklearn.XGBClassifier(**param_dist)
+
+    # train it using instance weights only in the training set
+    weights_train = np.random.choice([1, 2], len(X_train))
+    clf.fit(X_train, y_train,
+            sample_weight=weights_train,
+            eval_set=[(X_test, y_test)],
+            eval_metric='logloss',
+            verbose=False)
+
+    # evaluate logloss metric on test set *without* using weights
+    evals_result_without_weights = clf.evals_result()
+    logloss_without_weights = evals_result_without_weights["validation_0"]["logloss"]
+
+    # now use weights for the test set
+    np.random.seed(0)
+    weights_test = np.random.choice([1, 2], len(X_test))
+    clf.fit(X_train, y_train,
+            sample_weight=weights_train,
+            eval_set=[(X_test, y_test)],
+            sample_weight_eval_set=[weights_test],
+            eval_metric='logloss',
+            verbose=False)
+    evals_result_with_weights = clf.evals_result()
+    logloss_with_weights = evals_result_with_weights["validation_0"]["logloss"]
+
+    # check that the logloss in the test set is actually different when using weights
+    # than when not using them
+    assert all((logloss_with_weights[i] != logloss_without_weights[i] for i in [0, 1]))
+
