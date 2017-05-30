@@ -432,8 +432,8 @@ class XGBClassifier(XGBModel, XGBClassifierBase):
             if sample_weight_eval_set is None:
                 sample_weight_eval_set = [None] * len(eval_set)
             evals = list(
-                DMatrix(eval_set[i][0], label=self._le.transform(eval_set[i][1]), missing=self.missing,
-                        weight=sample_weight_eval_set[i])
+                DMatrix(eval_set[i][0], label=self._le.transform(eval_set[i][1]),
+                        missing=self.missing, weight=sample_weight_eval_set[i])
                 for i in range(len(eval_set))
             )
             nevals = len(evals)
